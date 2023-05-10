@@ -1,0 +1,10 @@
+yaml/.env
+./yaml/.env
+
+.venv/
+
+__pycache__/
+
+yaml/ca.conf
+yaml/ca.key
+yaml/ca.pem
