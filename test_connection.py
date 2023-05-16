@@ -2,12 +2,16 @@ import asyncio
 import os
 from dataclasses import dataclass
 from datetime import timedelta
-from temporalio import activity, workflow
 from typing import Optional
+
+from temporalio import activity, workflow
 from temporalio.client import Client, TLSConfig
 from temporalio.worker import Worker
+
 with workflow.unsafe.imports_passed_through():
     from github_activity import TASK_QUEUE_NAME
+
+
 @dataclass
 class ComposeGreetingInput:
     greeting: str
@@ -31,17 +35,16 @@ class GreetingWorkflow:
             start_to_close_timeout=timedelta(seconds=10),
         )
 
-async def main() -> None:
 
+async def main() -> None:
     with open(os.getenv("TEMPORAL_MTLS_TLS_CERT"), "rb") as f:
         client_cert = f.read()
 
     with open(os.getenv("TEMPORAL_MTLS_TLS_KEY"), "rb") as f:
         client_key = f.read()
 
-
     server_root_ca_cert: Optional[bytes] = None
-    
+
     client = await Client.connect(
         os.getenv("TEMPORAL_HOST_URL"),
         namespace=os.getenv("TEMPORAL_NAMESPACE"),
@@ -59,7 +62,6 @@ async def main() -> None:
         workflows=[GreetingWorkflow],
         activities=[compose_greeting],
     ):
-
         # While the worker is running, use the client to run the workflow and
         # print out its result. Note, in many production setups, the client
         # would be in a completely separate process from the worker.
