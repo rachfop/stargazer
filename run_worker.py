@@ -1,39 +1,23 @@
 import asyncio
 import os
-from typing import Optional
+from typing import Any, List, Optional
 
-from temporalio.client import Client, TLSConfig
+from temporalio.client import Client
 from temporalio.worker import Worker
 
-from github_activity import TASK_QUEUE_NAME, get_name_of_user, reviewers
+from github_activity import TASK_QUEUE_NAME, StarGazersComposer
 from github_workflows import GitHubWorkflow
 
 
 async def main() -> None:
-    with open(os.getenv("TEMPORAL_MTLS_TLS_CERT"), "rb") as f:
-        client_cert = f.read()
-
-    with open(os.getenv("TEMPORAL_MTLS_TLS_KEY"), "rb") as f:
-        client_key = f.read()
-
-    server_root_ca_cert: Optional[bytes] = None
-
-    client = await Client.connect(
-        os.getenv("TEMPORAL_HOST_URL"),
-        namespace=os.getenv("TEMPORAL_NAMESPACE"),
-        tls=TLSConfig(
-            server_root_ca_cert=server_root_ca_cert,
-            client_cert=client_cert,
-            client_private_key=client_key,
-        ),
-    )
-    print("Connected to Temporal server with mTLS")
+    client = await Client.connect("localhost:7233")
+    composer = StarGazersComposer(client)
 
     worker = Worker(
         client,
         task_queue=TASK_QUEUE_NAME,
         workflows=[GitHubWorkflow],
-        activities=[reviewers, get_name_of_user],
+        activities=[composer.compose_star_gazers, composer.complete_star_gazers],
     )
     await worker.run()
 

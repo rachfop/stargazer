@@ -1,39 +1,51 @@
 import asyncio
-import os
-from typing import Optional
+import datetime
 
-from temporalio.client import Client, TLSConfig
+import matplotlib.pyplot as plt
+import pandas as pd
+from temporalio.client import Client
 
 from github_activity import TASK_QUEUE_NAME, GitHubRepo
 from github_workflows import GitHubWorkflow
 
 
 async def main() -> None:
-    with open(os.getenv("TEMPORAL_MTLS_TLS_CERT"), "rb") as f:
-        client_cert = f.read()
-
-    with open(os.getenv("TEMPORAL_MTLS_TLS_KEY"), "rb") as f:
-        client_key = f.read()
-
-    server_root_ca_cert: Optional[bytes] = None
-
-    client = await Client.connect(
-        os.getenv("TEMPORAL_HOST_URL"),
-        namespace=os.getenv("TEMPORAL_NAMESPACE"),
-        tls=TLSConfig(
-            server_root_ca_cert=server_root_ca_cert,
-            client_cert=client_cert,
-            client_private_key=client_key,
-        ),
-    )
-
+    client = await Client.connect("localhost:7233")
     recent_reviewers = await client.execute_workflow(
         GitHubWorkflow.run,
-        GitHubRepo(name="temporalio/documentation"),
+        GitHubRepo(name="score-spec/spec"),
         id="github-workflow",
         task_queue=TASK_QUEUE_NAME,
     )
-    print(recent_reviewers)
+    df = pd.DataFrame(recent_reviewers)
+    df["created_at"] = pd.to_datetime(
+        df["created_at"]
+    )  # Ensure 'created_at' is treated as a date
+    df["qualifications"] = df.apply(
+        lambda row: int(
+            (row["followers"] < 2)
+            and (row["following"] < 2)
+            and (row["public_gists"] == 0)
+            and (row["public_repos"] < 5)
+            and (row["created_at"].date() > datetime.date(2022, 1, 1))
+            and (row["email"] is None)
+            and (row["bio"] is None)
+            and (not row["blog"])
+            and not isinstance(row["hireable"], bool)
+        ),
+        axis=1,
+    )
+    print(df)
+
+    plt.scatter(df["followers"], df["public_repos"])
+    plt.xlabel("Followers")
+    plt.ylabel("Public Repos")
+    plt.title("Followers vs Public Repos")
+    plt.show()
+
+    return df
+
+    # print(recent_reviewers)
 
 
 if __name__ == "__main__":

@@ -1,17 +1,16 @@
+import asyncio
 import os
 from dataclasses import dataclass
 from typing import Any, List
 
-from temporalio import activity
-
-TASK_QUEUE_NAME = "temporal-community-task-queue"
-
-from datetime import datetime, timedelta
-
 from github import Github
+from temporalio import activity
+from temporalio.client import Client
+
+TASK_QUEUE_NAME = "stargazers"
 
 # using an access token
-g = Github(os.getenv("GITHUB_ACCESS_TOKEN"))
+g = Github(os.environ["GITHUB_ACCESS_TOKEN"])
 
 
 @dataclass
@@ -19,40 +18,58 @@ class GitHubRepo:
     name: str
 
 
-@activity.defn
-async def reviewers(gh: GitHubRepo) -> List[str]:
-    repo = g.get_repo(gh.name)
-    two_weeks_ago = datetime.utcnow() - timedelta(weeks=2)
-    pull_requests = repo.get_pulls(state="all", sort="updated", direction="desc")
-    recent_pull_requests = [
-        pr
-        for pr in pull_requests
-        if pr.merged_at is not None and pr.merged_at >= two_weeks_ago
-    ]
-    activity.heartbeat("Getting reviewers and commenters")
-    reviewers_and_commenters = [
-        reviewer.login
-        for pr in recent_pull_requests
-        for reviewer in pr.requested_reviewers
-    ] + [
-        comment.user.login
-        for pr in recent_pull_requests
-        for comment in pr.get_issue_comments()
-    ]
-    return list(set(reviewers_and_commenters))
+async def main():
+    client = await Client.connect("localhost:7233")
+    return client
 
 
-@activity.defn
-async def get_name_of_user(reviewers_and_commenters) -> List[str]:
-    print("Reviewers and commenters in the last two weeks:")
-    user_name = []
-    for user in reviewers_and_commenters:
-        real_name = g.get_user(user).name
-        if real_name is not None:
-            user_name.append(real_name)
-            print(real_name)
-        else:
-            user_name.append(user)
-            print(user)
+class StarGazersComposer:
+    def __init__(self, client: Client) -> None:
+        self.client = client
+        self.stargazers = []
 
-    return user_name
+    @activity.defn
+    async def compose_star_gazers(self, gh: GitHubRepo) -> None:
+        repo = g.get_repo(gh.name)
+        stargazers = repo.get_stargazers()
+        activity.heartbeat("Getting stargazers")
+
+        for user in stargazers:
+            user_row = {
+                "login": user.login,
+                "followers": user.followers,
+                "following": user.following,
+                "public_gists": user.public_gists,
+                "public_repos": user.public_repos,
+                "created_at": user.created_at.date().isoformat(),
+                "email": user.email,
+                "bio": user.bio,
+                "blog": user.blog,
+                "hireable": user.hireable,
+            }
+            self.stargazers.append(user_row)
+
+            # Check the rate limit and complete asynchronously if necessary
+            if g.get_rate_limit().core.remaining == 0:
+                _ = asyncio.create_task(
+                    self.complete_star_gazers(activity.info().task_token)
+                )
+                activity.raise_complete_async()
+                return  # Exit the method, so that the activity can be retried later
+
+            # Complete asynchronously if we've gathered a batch of 100 users
+            if len(self.stargazers) >= 100:
+                _ = asyncio.create_task(
+                    self.complete_star_gazers(activity.info().task_token)
+                )
+                activity.raise_complete_async()
+                return  # Exit the method, so that the activity can be retried later
+
+    @activity.defn
+    async def complete_star_gazers(self, task_token) -> None:
+        """
+        This is an async function that completes a task using a task token and clears a list of stargazers.
+        """
+        handle = self.client.get_async_activity_handle(task_token=task_token)
+        await handle.complete(self.stargazers)
+        self.stargazers = []
