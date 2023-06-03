@@ -32,6 +32,9 @@ poetry run python run_worker.py
 # terminal two
 poetry run python run_workflow.py
 ```
+## Example output
+
+![https://github.com/temporalio/documentation](images/temporal:documentation.png)
 
 ## Terminate the Workflow
 
