@@ -13,6 +13,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v2
 
+      - name: Configure Git
+        run: |
+          git config --global user.email "${{ github.event.pull_request.user.email }}"
+          git config --global user.name "${{ github.event.pull_request.user.login }}"
+
       - name: Extract branch name
         id: branch_name
         run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
