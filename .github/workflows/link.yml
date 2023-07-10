@@ -15,7 +15,11 @@ jobs:
 
       - name: Configure Git
         run: |
-          git config --global user.email "${{ github.event.pull_request.user.email }}"
+          submitter_email="${{ github.event.pull_request.user.email }}"
+          if [ -z "$submitter_email" ]; then
+            submitter_email="actions@github.com"
+          fi
+          git config --global user.email "$submitter_email"
           git config --global user.name "${{ github.event.pull_request.user.login }}"
 
       - name: Extract branch name
