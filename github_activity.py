@@ -5,7 +5,7 @@ from github import Github
 from temporalio import activity
 
 
-TASK_QUEUE_NAME = "stargazers"
+TASK_QUEUE_NAME = "stargazers_02"
 
 # using an access token
 g = Github(os.environ["GITHUB_TOKEN"])
